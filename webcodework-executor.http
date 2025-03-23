@@ -1,0 +1,6 @@
+@webcodework_executor_HostAddress = http://localhost:5167
+
+GET {{webcodework_executor_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
