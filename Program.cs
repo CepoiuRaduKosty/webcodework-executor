@@ -29,7 +29,9 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddScoped<WebCodeWorkExecutor.Services.ICodeExecutionService, WebCodeWorkExecutor.Services.DockerCodeExecutionService>();
 builder.Services.AddProblemDetails();
+builder.Services.AddControllers(); 
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddHttpClient();
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo { /* ... Title, Version etc. ... */ });
@@ -88,45 +90,6 @@ app.UseExceptionHandler(); // Add basic exception handling
 app.UseAuthentication(); // Attempts to authenticate based on registered schemes
 app.UseAuthorization();  // Authorizes based on authenticated user/policies
 
-// Example placeholder - replace with actual evaluation endpoint later
-app.MapGet("/", () => $"Code Runner Service ({DateTime.UtcNow:O})")
-   .WithName("GetServiceStatus")
-   .WithTags("Diagnostics")
-   .ExcludeFromDescription(); // Optional: Hide simple root from Swagger UI
-
-app.MapPost("/test-docker", async (IDockerClient dockerClient, ILogger<Program> logger) =>
-{
-    // Simple endpoint to test basic Docker connection
-    try
-    {
-        var images = await dockerClient.Images.ListImagesAsync(new Docker.DotNet.Models.ImagesListParameters { All = true });
-        logger.LogInformation("Successfully listed {Count} Docker images.", images.Count);
-        return Results.Ok(new { message = $"Connected to Docker. Found {images.Count} images." });
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Failed to list Docker images.");
-        return Results.Problem($"Failed to connect to Docker: {ex.Message}", statusCode: 500);
-    }
-})
-    .WithName("TestDockerConnection").WithTags("Diagnostics")
-    .RequireAuthorization("ApiKeyPolicy"); // <-- PROTECT THIS ENDPOINT (Example)
-
-app.MapPost("/test-lifecycle", async (WebCodeWorkExecutor.Services.ICodeExecutionService executionService, ILogger<Program> logger) =>
-{
-    logger.LogInformation("Received request for /test-lifecycle");
-    bool success = await executionService.TestContainerLifecycleAsync(); // Use default 'alpine'
-    if (success)
-    {
-        return Results.Ok(new { message = "Container lifecycle test completed successfully (exit code 0)." });
-    }
-    else
-    {
-        return Results.Problem("Container lifecycle test failed or container returned non-zero exit code.", statusCode: 500);
-    }
-})
-    .WithName("TestContainerLifecycle").WithTags("Diagnostics")
-    .RequireAuthorization("ApiKeyPolicy"); // <-- PROTECT THIS ENDPOINT (Example)
-
+app.MapControllers();
 
 app.Run();
