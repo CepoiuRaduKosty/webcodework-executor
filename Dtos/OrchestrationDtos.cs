@@ -19,6 +19,12 @@ namespace WebCodeWorkExecutor.Dtos // Or your appropriate DTO namespace
 
         // Optional: Identifier for the test case if needed for reporting back
         public string? TestCaseId { get; set; } // e.g., "test1", "edge_case_null"
+
+        [Range(100, 10000)] // Example: 100ms to 10s
+        public int MaxExecutionTimeMs { get; set; } = 2000; // Default
+
+        [Range(32, 512)]  // Example: 32MB to 512MB
+        public int MaxRamMB { get; set; } = 128;    // Default
     }
 
     /// <summary>
@@ -36,9 +42,6 @@ namespace WebCodeWorkExecutor.Dtos // Or your appropriate DTO namespace
         [Required]
         [MinLength(1, ErrorMessage = "At least one test case must be provided.")]
         public List<TestCasePathInfo> TestCases { get; set; } = new List<TestCasePathInfo>();
-
-        public int TimeLimitSeconds { get; set; } = 5; // Default time limit
-        public int MemoryLimitMB { get; set; } = 256; // Default memory limit
     }
 
     /// <summary>
@@ -52,31 +55,17 @@ namespace WebCodeWorkExecutor.Dtos // Or your appropriate DTO namespace
 
         [Required]
         public string Status { get; set; } = EvaluationStatus.InternalError; // Final Verdict
-
-        public string? CompilerOutput { get; set; }
         public string? Stdout { get; set; }
         public string? Stderr { get; set; }
         public string? Message { get; set; }
         public long? DurationMs { get; set; }
     }
 
-    /// <summary>
-    /// Response DTO for the main evaluation orchestration endpoint.
-    /// Contains results for all processed test cases.
-    /// </summary>
     public class OrchestrationEvaluateResponse
     {
-        /// <summary>
-        /// Overall status, could be "Completed", "PartiallyCompleted", "Failed".
-        /// </summary>
-        public string OverallStatus { get; set; } = "Completed"; // Simple status for now
-
-        /// <summary>
-        /// List of results, one for each test case provided in the request.
-        /// </summary>
+        public string OverallStatus { get; set; } = "Error";
+        public bool CompilationSuccess { get; set; }
+        public string? CompilerOutput { get; set; }
         public List<OrchestrationTestCaseResult> Results { get; set; } = new List<OrchestrationTestCaseResult>();
     }
-
-    // Ensure EvaluationStatus static class is accessible here or redefine if needed
-    // public static class EvaluationStatus { ... constants ... }
 }

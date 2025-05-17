@@ -37,170 +37,180 @@ namespace WebCodeWorkExecutor.Services
                       throw new InvalidOperationException("Runner API Key ('Authentication:RunnerApiKey') not configured in Orchestrator.");
         }
 
-        public async Task<List<TestCaseEvaluationResult>> EvaluateSolutionAsync(
+        public async Task<SolutionEvaluationResult> EvaluateSolutionAsync(
             string language,
             string codeFilePath,
-            List<TestCaseInfo> testCases,
-            ExecutionLimits limits)
+            List<TestCaseInfo> testCases)
         {
-            var results = new List<TestCaseEvaluationResult>();
+            var overallResults = new List<TestCaseEvaluationResult>();
             var languageLower = language.ToLowerInvariant();
-            var runnerImage = $"webcodework-container-{languageLower}:latest"; // Determine image name
+            var runnerImageName = _configuration.GetValue<string>($"RunnerImages:{languageLower}")
+                                  ?? $"generic-runner-{languageLower}:latest"; // Default naming convention
 
-            _logger.LogInformation("Starting evaluation for {TestCaseCount} test cases. Language: {Language}, Image: {Image}",
-                testCases.Count, language, runnerImage);
+            _logger.LogInformation("Starting batch evaluation for {TestCaseCount} test cases. Language: {Language}, Solution: {CodePath}, Runner Image: {Image}",
+                testCases.Count, language, codeFilePath, runnerImageName);
 
-            // Check if image exists locally (optional optimization)
-            // await EnsureImageExistsAsync(runnerImage);
+            await EnsureImageExistsAsync(runnerImageName);
 
-            int testCaseNumber = 0;
-            foreach (var testCase in testCases)
+            string containerName = $"batch-runner-{languageLower}-{GenerateRandomSuffix(6)}";
+            string? containerId = null;
+            int hostPort = 0;
+            HttpClient? httpClient = null;
+
+            try
             {
-                testCaseNumber++;
-                _logger.LogInformation("Processing Test Case {Num}: Input='{InputPath}'", testCaseNumber, testCase.InputFilePath);
+                // 1. Get Free Port on Host for the runner container's API
+                hostPort = GetFreeTcpPort();
+                string internalRunnerPort = "5000";
+                string hostPortStr = hostPort.ToString();
+                _logger.LogDebug("Obtained free host port {HostPort} for runner's internal port {InternalPort}", hostPort, internalRunnerPort);
 
-                string containerName = $"webcodework-runner-{languageLower}-{GenerateRandomSuffix(6)}";
-                string? containerId = null;
-                int hostPort = 0;
-                HttpClient? httpClient = null; // Scope HttpClient within loop/try
-
-                try
+                var runnerBatchRequest = new RunnerBatchExecuteRequestDto
                 {
-                    // 1. Get Free Port on Host (if using port mapping)
-                    hostPort = GetFreeTcpPort();
-                    string internalPort = "5000"; // Default internal port of runner API
-                    string hostPortStr = hostPort.ToString();
-                    _logger.LogDebug("Obtained free host port: {HostPort}", hostPort);
-
-                    // 2. Create Container Config
-                     var envVars = new List<string> {
-                        $"Authentication__ApiKey={_apiKey}", // Pass API Key securely
-                        $"Execution__Language={languageLower}",
-                        $"ASPNETCORE_URLS=http://+:{internalPort}" // Ensure runner listens correctly
-                     };
-
-                    var portBindings = new Dictionary<string, IList<PortBinding>> {
-                        { $"{internalPort}/tcp", new List<PortBinding> { new PortBinding { HostPort = hostPortStr } } }
-                    };
-
-                    var hostConfig = new HostConfig
+                    Language = languageLower,
+                    CodeFilePath = codeFilePath, // Path for runner to fetch from Azure/Azurite
+                    TestCases = testCases.Select(tc => new RunnerTestCaseItemDto
                     {
-                        PortBindings = portBindings,
-                        Memory = limits.MemoryLimitMB * 1024 * 1024, // Convert MB to Bytes
-                        // NanoCPUs = ..., // Calculate based on limits if needed
-                        AutoRemove = true,
-                        NetworkMode = "bridge" // Default bridge network often needed to reach host localhost port
-                    };
+                        InputFilePath = tc.InputFilePath,
+                        ExpectedOutputFilePath = tc.ExpectedOutputFilePath,
+                        TimeLimitMs = tc.MaxExecutionTimeMs,
+                        MaxRamMB = tc.MaxRamMB,
+                        TestCaseId = tc.TestCaseId // Pass through the identifier
+                    }).ToList(),
+                };
 
-                    var config = new Config { Image = runnerImage, Env = envVars };
+                // 2. Prepare Environment Variables for Runner Container
+                var envVars = new List<string> {
+                    $"Authentication__ApiKey={_apiKey}",
+                    $"Execution__Language={languageLower}",
+                    $"ASPNETCORE_URLS=http://+:{internalRunnerPort}",
+                    $"AzureStorage__ConnectionString={_configuration.GetValue<string>("AzureStorage:ConnectionString")}",
+                    $"AzureStorage__ContainerName={_configuration.GetValue<string>("AzureStorage:ContainerName")}"
+                };
 
-                    // 3. Create & Start Container
-                    _logger.LogInformation("Creating container '{ContainerName}' on host port {HostPort}...", containerName, hostPort);
-                    var createResponse = await _dockerClient.Containers.CreateContainerAsync(
-                        new CreateContainerParameters(config) { HostConfig = hostConfig, Name = containerName }
-                    );
-                    containerId = createResponse.ID;
+                // 3. Create Container Config
+                var portBindings = new Dictionary<string, IList<PortBinding>> {
+                    { $"{internalRunnerPort}/tcp", new List<PortBinding> { new PortBinding { HostPort = hostPort.ToString() } } }
+                };
 
-                    _logger.LogInformation("Starting container '{ContainerName}' ({ContainerId})...", containerName, containerId);
-                    await _dockerClient.Containers.StartContainerAsync(containerId, null);
+                var hostConfig = new HostConfig
+                {
+                    PortBindings = portBindings,
+                    AutoRemove = true,
+                    NetworkMode = "bridge"
+                };
 
-                    // 4. Wait for Runner API to be ready (simple delay or health check)
-                    // IMPORTANT: Add a more robust health check polling http://localhost:{hostPort}/
-                    await Task.Delay(TimeSpan.FromSeconds(3)); // Simple delay - REPLACE with proper health check!
-                    _logger.LogDebug("Assuming runner API is ready on port {HostPort} for container {ContainerId}", hostPort, containerId);
+                var containerConfig = new Config { Image = runnerImageName, Env = envVars };
 
-                    // 5. Prepare Request for Runner API
-                    var runnerRequest = new RunnerExecuteRequestDto
+                _logger.LogInformation("Creating batch runner container '{ContainerName}' on host port {HostPort}...", containerName, hostPort);
+                var createResponse = await _dockerClient.Containers.CreateContainerAsync(
+                    new CreateContainerParameters(containerConfig) { HostConfig = hostConfig, Name = containerName }
+                );
+                containerId = createResponse.ID;
+
+                _logger.LogInformation("Starting batch runner container '{ContainerName}' ({ContainerId})...", containerName, containerId);
+                await _dockerClient.Containers.StartContainerAsync(containerId, null);
+
+                await Task.Delay(TimeSpan.FromSeconds(5)); // Increased delay for potentially larger setup
+
+                httpClient = _httpClientFactory.CreateClient("RunnerApiClient"); // Use named client if configured
+                httpClient.BaseAddress = new Uri($"http://localhost:{hostPort}");
+                httpClient.DefaultRequestHeaders.Add(ApiKeyAuthenticationDefaults.ApiKeyHeaderName, _apiKey);
+                httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                _logger.LogInformation("Sending batch evaluation request to runner {ContainerId} via port {HostPort}...", containerId, hostPort);
+                // Assume the runner's batch endpoint is "/execute" or "/batch-execute"
+                HttpResponseMessage response = await httpClient.PostAsJsonAsync("/execute", runnerBatchRequest);
+
+                RunnerBatchExecuteResponseDto? batchRunnerResult = null;
+                if (response.IsSuccessStatusCode)
+                {
+                    batchRunnerResult = await response.Content.ReadFromJsonAsync<RunnerBatchExecuteResponseDto>();
+                    _logger.LogInformation("Runner API batch call successful. Compilation: {CompileStatus}, Test Cases: {Count}",
+                       batchRunnerResult?.CompilationSuccess, batchRunnerResult?.TestCaseResults?.Count ?? 0);
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("Runner API batch call failed. Status: {StatusCode}, Reason: {Reason}, Content: {Content}",
+                        response.StatusCode, response.ReasonPhrase, errorContent);
+                    // If the whole batch call fails, all test cases are effectively errored
+                    var errorResults = testCases.Select(tc => new TestCaseEvaluationResult(
+                        tc.InputFilePath, EvaluationStatus.InternalError, null, null, $"Runner API communication failed: {response.StatusCode}", null)).ToList();
+                    return new SolutionEvaluationResult(false, "Runner API communication error", errorResults);
+                }
+                
+                // 6. Map Runner's Batch Result to Orchestrator's SolutionEvaluationResult
+                if (batchRunnerResult == null)
+                {
+                     var errorResults = testCases.Select(tc => new TestCaseEvaluationResult(
+                        tc.InputFilePath, EvaluationStatus.InternalError, null, null, "Failed to deserialize runner batch response.", null)).ToList();
+                    return new SolutionEvaluationResult(false, "Failed to deserialize runner batch response", errorResults);
+                }
+
+                var finalTestCaseResults = new List<TestCaseEvaluationResult>();
+                if (batchRunnerResult.CompilationSuccess)
+                {
+                    // Map individual test case results
+                    foreach (var runnerTcResult in batchRunnerResult.TestCaseResults)
                     {
-                        Language = languageLower,
-                        CodeFilePath = codeFilePath,
-                        InputFilePath = testCase.InputFilePath,
-                        ExpectedOutputFilePath = testCase.ExpectedOutputFilePath,
-                        TimeLimitSeconds = limits.TimeLimitSeconds
-                        // MemoryLimitMB = limits.MemoryLimitMB // Pass if runner API uses it
-                    };
+                        // Find original TestCaseInfo to get InputFilePath for the result (if TestCaseId was used for correlation)
+                        var originalTc = testCases.FirstOrDefault(tc => tc.TestCaseId == runnerTcResult.TestCaseId) ??
+                                         testCases.FirstOrDefault(tc => tc.InputFilePath.EndsWith(runnerTcResult.TestCaseId ?? Guid.NewGuid().ToString())); // Fallback by trying to match input path part
 
-                    // 6. Call Runner API
-                    httpClient = _httpClientFactory.CreateClient(); // Create client
-                    httpClient.BaseAddress = new Uri($"http://localhost:{hostPort}"); // Target mapped port
-                    httpClient.DefaultRequestHeaders.Add(ApiKeyAuthenticationDefaults.ApiKeyHeaderName, _apiKey); // Add API Key Header
-                    httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-                    _logger.LogInformation("Sending evaluation request to runner container {ContainerId} via port {HostPort}...", containerId, hostPort);
-                    HttpResponseMessage response = await httpClient.PostAsJsonAsync("/execute", runnerRequest); // Uses System.Net.Http.Json
-
-                    RunnerExecuteResponseDto? runnerResult = null;
-                    if (response.IsSuccessStatusCode)
-                    {
-                         runnerResult = await response.Content.ReadFromJsonAsync<RunnerExecuteResponseDto>();
-                         _logger.LogInformation("Runner API call successful for test case {Num}. Status: {Status}", testCaseNumber, runnerResult?.Status ?? "N/A");
-                    }
-                    else
-                    {
-                        var errorContent = await response.Content.ReadAsStringAsync();
-                        _logger.LogError("Runner API call failed for test case {Num}. Status: {StatusCode}, Reason: {Reason}, Content: {Content}",
-                            testCaseNumber, response.StatusCode, response.ReasonPhrase, errorContent);
-                        // Store internal error for this test case
-                         results.Add(new TestCaseEvaluationResult(testCase.InputFilePath, EvaluationStatus.InternalError, null, null, null, $"Runner API failed: {response.StatusCode} - {response.ReasonPhrase}", null));
-                         continue; // Move to next test case after logging error
-                    }
-
-                    // 7. Map Runner Result to Final Result
-                    if(runnerResult != null) {
-                         results.Add(new TestCaseEvaluationResult(
-                            TestCaseInputPath: testCase.InputFilePath,
-                            Status: runnerResult.Status, // Use status from runner
-                            CompilerOutput: runnerResult.CompilerOutput,
-                            Stdout: runnerResult.Stdout,
-                            Stderr: runnerResult.Stderr,
-                            Message: runnerResult.Message, // Pass message from runner
-                            DurationMs: runnerResult.DurationMs
+                        finalTestCaseResults.Add(new TestCaseEvaluationResult(
+                            TestCaseInputPath: originalTc?.InputFilePath ?? runnerTcResult.TestCaseId ?? "Unknown",
+                            Status: runnerTcResult.Status, // This is now the final verdict from the runner
+                            Stdout: runnerTcResult.Stdout,
+                            Stderr: runnerTcResult.Stderr,
+                            Message: runnerTcResult.Message,
+                            DurationMs: runnerTcResult.DurationMs
                         ));
-                    } else {
-                        // Should not happen if response was success, but handle anyway
-                        results.Add(new TestCaseEvaluationResult(testCase.InputFilePath, EvaluationStatus.InternalError, null, null, null, "Failed to deserialize runner response.", null));
                     }
                 }
-                catch (Exception ex)
+                else // Compilation failed
                 {
-                    _logger.LogError(ex, "Error processing Test Case {Num} (Input: {InputPath}). Container ID: {ContainerId}", testCaseNumber, testCase.InputFilePath, containerId ?? "N/A");
-                    // Record internal error for this specific test case
-                    results.Add(new TestCaseEvaluationResult(testCase.InputFilePath, EvaluationStatus.InternalError, null, null, null, $"Orchestrator error: {ex.Message}", null));
-                    // Continue to the next test case
+                    _logger.LogWarning("Compilation failed for batch evaluation. Compiler Output: {CompilerOutput}", batchRunnerResult.CompilerOutput);
+                    // Mark all test cases with compile error
+                    finalTestCaseResults.AddRange(testCases.Select(tc => new TestCaseEvaluationResult(
+                        tc.InputFilePath,
+                        EvaluationStatus.CompileError,
+                        null, null, // No stdout/stderr from execution
+                        "Compilation failed (see compiler output).",
+                        null
+                    )));
                 }
-                finally
+
+                return new SolutionEvaluationResult(
+                    batchRunnerResult.CompilationSuccess,
+                    batchRunnerResult.CompilerOutput,
+                    finalTestCaseResults
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Critical error during batch solution evaluation. Language: {Language}, CodeFile: {CodeFile}, Container ID (if any): {ContainerId}",
+                    language, codeFilePath, containerId ?? "N/A");
+                 var errorResults = testCases.Select(tc => new TestCaseEvaluationResult(
+                        tc.InputFilePath, EvaluationStatus.InternalError, null, null, $"Orchestrator critical error: {ex.Message}", null)).ToList();
+                 return new SolutionEvaluationResult(false, $"Orchestrator critical error: {ex.Message}", errorResults);
+            }
+            finally
+            {
+                // Stop and (Auto)Remove Container
+                if (!string.IsNullOrEmpty(containerId))
                 {
-                    // 8. Stop and Cleanup Container (Stop first, AutoRemove should handle removal)
-                    if (!string.IsNullOrEmpty(containerId))
+                    _logger.LogDebug("Stopping batch runner container {ContainerId}...", containerId);
+                    try
                     {
-                        _logger.LogDebug("Stopping container {ContainerId} for test case {Num}...", containerId, testCaseNumber);
-                        try
-                        {
-                            // Give a short grace period before killing
-                            await _dockerClient.Containers.StopContainerAsync(containerId, new ContainerStopParameters { WaitBeforeKillSeconds = 5 });
-                            _logger.LogInformation("Stopped container {ContainerId}.", containerId);
-                            // Removal should happen automatically due to AutoRemove=true
-                        }
-                        catch (DockerContainerNotFoundException) {
-                             _logger.LogWarning("Container {ContainerId} already removed or not found during cleanup.", containerId);
-                        }
-                        catch (Exception cleanupEx)
-                        {
-                            _logger.LogError(cleanupEx, "Error stopping/cleaning up container {ContainerId}.", containerId);
-                            // Force remove might be needed if stop fails and AutoRemove doesn't work
-                             try { await _dockerClient.Containers.RemoveContainerAsync(containerId, new ContainerRemoveParameters { Force = true }); } catch {}
-                        }
+                        await _dockerClient.Containers.StopContainerAsync(containerId, new ContainerStopParameters { WaitBeforeKillSeconds = 3 });
+                        _logger.LogInformation("Stopped batch runner container {ContainerId}.", containerId);
                     }
-                    httpClient?.Dispose(); // Dispose HttpClient
+                    catch (Exception cleanupEx) { _logger.LogError(cleanupEx, "Error stopping/cleaning up batch runner container {ContainerId}.", containerId); }
                 }
-            } // End foreach testCase
-
-            _logger.LogInformation("Finished evaluation for {TestCaseCount} test cases.", testCases.Count);
-            return results;
+                httpClient?.Dispose();
+            }
         }
-
-
-        // --- Helper Methods ---
 
         private string GenerateRandomSuffix(int length)
         {

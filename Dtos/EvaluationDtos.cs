@@ -3,89 +3,76 @@ using System.ComponentModel.DataAnnotations;
 
 namespace WebCodeWorkExecutor.Services // Or your appropriate namespace
 {
-    /// <summary>
-    /// Information about a single test case file pair in storage.
-    /// </summary>
     public record TestCaseInfo(
         string InputFilePath,
-        string ExpectedOutputFilePath
-        // Optional: Add a name or ID for easier tracking if needed
-        // string? TestCaseName
+        string ExpectedOutputFilePath,
+        int MaxExecutionTimeMs, 
+        int MaxRamMB,
+        string? TestCaseId = null 
     );
 
-    /// <summary>
-    /// Execution limits for the code runner.
-    /// </summary>
-    public record ExecutionLimits(
-        int TimeLimitSeconds = 5,
-        int MemoryLimitMB = 256
-    );
-
-    /// <summary>
-    /// The result of evaluating a single test case.
-    /// Mirrors GenericRunnerApi.Dtos.ExecuteResponse structure + input path.
-    /// </summary>
     public record TestCaseEvaluationResult(
-        string TestCaseInputPath, // Identify which test case this result is for
-        string Status, // Final Verdict (Accepted, WrongAnswer, CompileError, etc.)
-        string? CompilerOutput,
+        string TestCaseInputPath,
+        string Status,
         string? Stdout,
         string? Stderr,
-        string? Message,
+        string? Message,    
         long? DurationMs
-        // Add ExitCode etc. if needed
     );
 
-    // --- DTO for calling the Runner API ---
-    // (This should match GenericRunnerApi.Dtos.ExecuteRequest)
-    internal record RunnerExecuteRequestDto // Internal DTO for clarity
+    public record SolutionEvaluationResult(
+        bool CompilationSuccess,
+        string? CompilerOutput,
+        List<TestCaseEvaluationResult> TestCaseResults
+    );
+
+    // --- DTOs for calling the Runner API's single /execute endpoint ---
+
+    internal record RunnerTestCaseItemDto
+    {
+        public string InputFilePath { get; set; } = string.Empty;
+        public string ExpectedOutputFilePath { get; set; } = string.Empty; // Runner needs this to compare
+        public int TimeLimitMs { get; set; }
+        public int MaxRamMB { get; set; }
+        public string? TestCaseId { get; set; } // For correlating results back
+    }
+
+    internal record RunnerBatchExecuteRequestDto
     {
         public string Language { get; set; } = string.Empty;
         public string? Version { get; set; }
-        public string CodeFilePath { get; set; } = string.Empty;
-        public string InputFilePath { get; set; } = string.Empty;
-        public string ExpectedOutputFilePath { get; set; } = string.Empty;
-        public int TimeLimitSeconds { get; set; }
-        // public int MemoryLimitMB { get; set; }
+        public string CodeFilePath { get; set; } = string.Empty; // Path in Azure/Azurite
+        public List<RunnerTestCaseItemDto> TestCases { get; set; } = new List<RunnerTestCaseItemDto>();
+        // Global container limits (can be more generous than individual test case limits)
     }
 
-    // --- DTO for response from the Runner API ---
-    // (This should match GenericRunnerApi.Dtos.ExecuteResponse)
-    internal record RunnerExecuteResponseDto // Internal DTO for clarity
+    internal record RunnerTestCaseResultDto
     {
-        public string Status { get; set; } = "INTERNAL_ERROR";
-        public string? CompilerOutput { get; set; }
+        public string? TestCaseId { get; set; } // For correlating
+        public string Status { get; set; } = "INTERNAL_ERROR"; // Runner's status for this test case
         public string? Stdout { get; set; }
         public string? Stderr { get; set; }
-        public string? Message { get; set; }
         public long? DurationMs { get; set; }
+        public string? Message { get; set; }
     }
 
-    public class EvaluationResponse
+    internal record RunnerBatchExecuteResponseDto
     {
-        [Required]
-        public string Status { get; set; } = EvaluationStatus.InternalError; // Uses the static class
-
+        public bool CompilationSuccess { get; set; }
         public string? CompilerOutput { get; set; }
-        public string? Stdout { get; set; }
-        public string? Stderr { get; set; }
-        public string? Message { get; set; }
-        public long? DurationMs { get; set; }
+        public List<RunnerTestCaseResultDto> TestCaseResults { get; set; } = new List<RunnerTestCaseResultDto>();
     }
 
-    /// <summary>
-    /// Defines constant strings for the final evaluation status returned by the orchestrator.
-    /// </summary>
-    public static class EvaluationStatus // <<< Make sure this class definition exists
+     public static class EvaluationStatus // This should be the orchestrator's final status reporting
     {
         public const string Accepted = "ACCEPTED";
         public const string WrongAnswer = "WRONG_ANSWER";
         public const string CompileError = "COMPILE_ERROR";
         public const string RuntimeError = "RUNTIME_ERROR";
         public const string TimeLimitExceeded = "TIME_LIMIT_EXCEEDED";
-        public const string MemoryLimitExceeded = "MEMORY_LIMIT_EXCEEDED"; // Keep if planned
-        public const string FileError = "FILE_ERROR"; // Error fetching files from storage
-        public const string LanguageNotSupported = "LANGUAGE_NOT_SUPPORTED"; // From factory
-        public const string InternalError = "INTERNAL_ERROR"; // Orchestrator or runner internal error
+        public const string MemoryLimitExceeded = "MEMORY_LIMIT_EXCEEDED";
+        public const string FileError = "FILE_ERROR";
+        public const string LanguageNotSupported = "LANGUAGE_NOT_SUPPORTED";
+        public const string InternalError = "INTERNAL_ERROR";
     }
 }
