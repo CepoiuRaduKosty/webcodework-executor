@@ -33,7 +33,7 @@ namespace WebCodeWorkExecutor.Services
             _httpClientFactory = httpClientFactory;
             _configuration = configuration;
             _logger = logger;
-            _apiKey = _configuration.GetValue<string>("Authentication:RunnerApiKey") ?? // Get key from config
+            _apiKey = _configuration.GetValue<string>("Authentication:ApiKey") ?? // Get key from config
                       throw new InvalidOperationException("Runner API Key ('Authentication:RunnerApiKey') not configured in Orchestrator.");
         }
 
