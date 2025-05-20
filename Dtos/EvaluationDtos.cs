@@ -17,7 +17,8 @@ namespace WebCodeWorkExecutor.Services // Or your appropriate namespace
         string? Stdout,
         string? Stderr,
         string? Message,    
-        long? DurationMs
+        long? DurationMs,
+        bool MaximumMemoryException
     );
 
     public record SolutionEvaluationResult(
@@ -54,6 +55,7 @@ namespace WebCodeWorkExecutor.Services // Or your appropriate namespace
         public string? Stderr { get; set; }
         public long? DurationMs { get; set; }
         public string? Message { get; set; }
+        public bool MaximumMemoryException { get; set; }
     }
 
     internal record RunnerBatchExecuteResponseDto

@@ -136,7 +136,7 @@ namespace WebCodeWorkExecutor.Services
                         response.StatusCode, response.ReasonPhrase, errorContent);
                     // If the whole batch call fails, all test cases are effectively errored
                     var errorResults = testCases.Select(tc => new TestCaseEvaluationResult(
-                        tc.InputFilePath, EvaluationStatus.InternalError, null, null, $"Runner API communication failed: {response.StatusCode}", null)).ToList();
+                        tc.InputFilePath, EvaluationStatus.InternalError, null, null, $"Runner API communication failed: {response.StatusCode}", null, false)).ToList();
                     return new SolutionEvaluationResult(false, "Runner API communication error", errorResults);
                 }
                 
@@ -144,7 +144,7 @@ namespace WebCodeWorkExecutor.Services
                 if (batchRunnerResult == null)
                 {
                      var errorResults = testCases.Select(tc => new TestCaseEvaluationResult(
-                        tc.InputFilePath, EvaluationStatus.InternalError, null, null, "Failed to deserialize runner batch response.", null)).ToList();
+                        tc.InputFilePath, EvaluationStatus.InternalError, null, null, "Failed to deserialize runner batch response.", null, false)).ToList();
                     return new SolutionEvaluationResult(false, "Failed to deserialize runner batch response", errorResults);
                 }
 
@@ -164,7 +164,8 @@ namespace WebCodeWorkExecutor.Services
                             Stdout: runnerTcResult.Stdout,
                             Stderr: runnerTcResult.Stderr,
                             Message: runnerTcResult.Message,
-                            DurationMs: runnerTcResult.DurationMs
+                            DurationMs: runnerTcResult.DurationMs,
+                            MaximumMemoryException: runnerTcResult.MaximumMemoryException
                         ));
                     }
                 }
@@ -177,7 +178,7 @@ namespace WebCodeWorkExecutor.Services
                         EvaluationStatus.CompileError,
                         null, null, // No stdout/stderr from execution
                         "Compilation failed (see compiler output).",
-                        null
+                        null, false
                     )));
                 }
 
@@ -192,7 +193,7 @@ namespace WebCodeWorkExecutor.Services
                 _logger.LogError(ex, "Critical error during batch solution evaluation. Language: {Language}, CodeFile: {CodeFile}, Container ID (if any): {ContainerId}",
                     language, codeFilePath, containerId ?? "N/A");
                  var errorResults = testCases.Select(tc => new TestCaseEvaluationResult(
-                        tc.InputFilePath, EvaluationStatus.InternalError, null, null, $"Orchestrator critical error: {ex.Message}", null)).ToList();
+                        tc.InputFilePath, EvaluationStatus.InternalError, null, null, $"Orchestrator critical error: {ex.Message}", null, false)).ToList();
                  return new SolutionEvaluationResult(false, $"Orchestrator critical error: {ex.Message}", errorResults);
             }
             finally
