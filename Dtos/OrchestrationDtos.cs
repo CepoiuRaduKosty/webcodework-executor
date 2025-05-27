@@ -59,6 +59,7 @@ namespace WebCodeWorkExecutor.Dtos // Or your appropriate DTO namespace
         public string? Stderr { get; set; }
         public string? Message { get; set; }
         public long? DurationMs { get; set; }
+        public string? TestcaseName { get; set; }
     }
 
     public class OrchestrationEvaluateResponse

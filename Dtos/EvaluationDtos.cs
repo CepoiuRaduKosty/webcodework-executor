@@ -65,7 +65,7 @@ namespace WebCodeWorkExecutor.Services // Or your appropriate namespace
         public List<RunnerTestCaseResultDto> TestCaseResults { get; set; } = new List<RunnerTestCaseResultDto>();
     }
 
-     public static class EvaluationStatus // This should be the orchestrator's final status reporting
+     public static class EvaluationStatus
     {
         public const string Accepted = "ACCEPTED";
         public const string WrongAnswer = "WRONG_ANSWER";

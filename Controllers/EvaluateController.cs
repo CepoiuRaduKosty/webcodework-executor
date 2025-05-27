@@ -69,7 +69,8 @@ namespace WebCodeWorkExecutor.Controllers
                         TestCaseInputPath = tc.InputFilePath,
                         TestCaseId = tc.TestCaseId,
                         Status = EvaluationStatus.LanguageNotSupported,
-                        Message = langEx.Message
+                        Message = langEx.Message,
+                        TestcaseName = tc.InputFilePath,
                     }).ToList()
                 });
             }
