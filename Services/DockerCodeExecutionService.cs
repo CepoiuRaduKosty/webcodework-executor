@@ -117,6 +117,7 @@ namespace WebCodeWorkExecutor.Services
                 httpClient.BaseAddress = new Uri($"http://localhost:{hostPort}");
                 httpClient.DefaultRequestHeaders.Add(ApiKeyAuthenticationDefaults.ApiKeyHeaderName, _apiKey);
                 httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                httpClient.Timeout = TimeSpan.FromMinutes(10);
 
                 _logger.LogInformation("Sending batch evaluation request to runner {ContainerId} via port {HostPort}...", containerId, hostPort);
                 // Assume the runner's batch endpoint is "/execute" or "/batch-execute"
