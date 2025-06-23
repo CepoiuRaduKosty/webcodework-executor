@@ -1,14 +1,14 @@
-// Dtos/OrchestrationDtos.cs
+
 using System.ComponentModel.DataAnnotations;
 using System.Collections.Generic;
-using WebCodeWorkExecutor.Services; // For List
+using WebCodeWorkExecutor.Services; 
 
-namespace WebCodeWorkExecutor.Dtos // Or your appropriate DTO namespace
+namespace WebCodeWorkExecutor.Dtos 
 {
-    /// <summary>
-    /// Represents a single test case file pair provided by the caller.
-    /// Paths are expected to be relative to the configured Azure Storage container.
-    /// </summary>
+    
+    
+    
+    
     public class TestCasePathInfo
     {
         [Required]
@@ -17,44 +17,44 @@ namespace WebCodeWorkExecutor.Dtos // Or your appropriate DTO namespace
         [Required]
         public string ExpectedOutputFilePath { get; set; } = string.Empty;
 
-        // Optional: Identifier for the test case if needed for reporting back
-        public string? TestCaseId { get; set; } // e.g., "test1", "edge_case_null"
+        
+        public string? TestCaseId { get; set; } 
 
-        [Range(100, 10000)] // Example: 100ms to 10s
-        public int MaxExecutionTimeMs { get; set; } = 2000; // Default
+        [Range(100, 100000)] 
+        public int MaxExecutionTimeMs { get; set; } = 2000; 
 
-        [Range(32, 512)]  // Example: 32MB to 512MB
-        public int MaxRamMB { get; set; } = 128;    // Default
+        [Range(32, 512)]  
+        public int MaxRamMB { get; set; } = 128;    
     }
 
-    /// <summary>
-    /// Request DTO for the main evaluation orchestration endpoint.
-    /// </summary>
+    
+    
+    
     public class OrchestrationEvaluateRequest
     {
         [Required]
-        public string Language { get; set; } = string.Empty; // "c", "python", etc.
-        public string? Version { get; set; } // Optional specific version tag
+        public string Language { get; set; } = string.Empty; 
+        public string? Version { get; set; } 
 
         [Required]
-        public string CodeFilePath { get; set; } = string.Empty; // Path in Azure/Azurite blob
+        public string CodeFilePath { get; set; } = string.Empty; 
 
         [Required]
         [MinLength(1, ErrorMessage = "At least one test case must be provided.")]
         public List<TestCasePathInfo> TestCases { get; set; } = new List<TestCasePathInfo>();
     }
 
-    /// <summary>
-    /// Represents the evaluation result for a single test case, returned by the orchestrator.
-    /// Matches the structure of CodeRunnerService.Services.TestCaseEvaluationResult.
-    /// </summary>
+    
+    
+    
+    
     public class OrchestrationTestCaseResult
     {
-        public string TestCaseInputPath { get; set; } = string.Empty; // Identifies the test case input
-        public string? TestCaseId { get; set; } // Optional ID passed in request
+        public string TestCaseInputPath { get; set; } = string.Empty; 
+        public string? TestCaseId { get; set; } 
 
         [Required]
-        public string Status { get; set; } = EvaluationStatus.InternalError; // Final Verdict
+        public string Status { get; set; } = EvaluationStatus.InternalError; 
         public string? Stdout { get; set; }
         public string? Stderr { get; set; }
         public string? Message { get; set; }

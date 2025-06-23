@@ -1,7 +1,7 @@
-// Services/EvaluationDtos.cs (Create or add to this file)
+
 using System.ComponentModel.DataAnnotations;
 
-namespace WebCodeWorkExecutor.Services // Or your appropriate namespace
+namespace WebCodeWorkExecutor.Services 
 {
     public record TestCaseInfo(
         string InputFilePath,
@@ -27,30 +27,30 @@ namespace WebCodeWorkExecutor.Services // Or your appropriate namespace
         List<TestCaseEvaluationResult> TestCaseResults
     );
 
-    // --- DTOs for calling the Runner API's single /execute endpoint ---
+    
 
     internal record RunnerTestCaseItemDto
     {
         public string InputFilePath { get; set; } = string.Empty;
-        public string ExpectedOutputFilePath { get; set; } = string.Empty; // Runner needs this to compare
+        public string ExpectedOutputFilePath { get; set; } = string.Empty; 
         public int TimeLimitMs { get; set; }
         public int MaxRamMB { get; set; }
-        public string? TestCaseId { get; set; } // For correlating results back
+        public string? TestCaseId { get; set; } 
     }
 
     internal record RunnerBatchExecuteRequestDto
     {
         public string Language { get; set; } = string.Empty;
         public string? Version { get; set; }
-        public string CodeFilePath { get; set; } = string.Empty; // Path in Azure/Azurite
+        public string CodeFilePath { get; set; } = string.Empty; 
         public List<RunnerTestCaseItemDto> TestCases { get; set; } = new List<RunnerTestCaseItemDto>();
-        // Global container limits (can be more generous than individual test case limits)
+        
     }
 
     internal record RunnerTestCaseResultDto
     {
-        public string? TestCaseId { get; set; } // For correlating
-        public string Status { get; set; } = "INTERNAL_ERROR"; // Runner's status for this test case
+        public string? TestCaseId { get; set; } 
+        public string Status { get; set; } = "INTERNAL_ERROR"; 
         public string? Stdout { get; set; }
         public string? Stderr { get; set; }
         public long? DurationMs { get; set; }

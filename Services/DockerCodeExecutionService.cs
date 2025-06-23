@@ -1,39 +1,39 @@
-// Services/DockerCodeExecutionService.cs
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Net.Sockets; // For TcpListener
-using System.Net; // For IPAddress
-using System.Text; // For Encoding
-using System.Text.Json; // For JSON serialization
-using System.Net.Http.Headers; // For AuthenticationHeaderValue
-using System.Collections.Generic; // For List, Dictionary
+using System.Net.Sockets; 
+using System.Net; 
+using System.Text; 
+using System.Text.Json; 
+using System.Net.Http.Headers; 
+using System.Collections.Generic; 
 using System.Linq;
-using WebCodeWorkExecutor.Authentication; // For Linq methods
+using WebCodeWorkExecutor.Authentication; 
 
 namespace WebCodeWorkExecutor.Services
 {
-    // Assuming DockerCodeExecutionService implements ICodeExecutionService
+    
     public class DockerCodeExecutionService : ICodeExecutionService
     {
         private readonly IDockerClient _dockerClient;
-        private readonly IHttpClientFactory _httpClientFactory; // Inject HttpClientFactory
-        private readonly IConfiguration _configuration; // Inject Configuration
+        private readonly IHttpClientFactory _httpClientFactory; 
+        private readonly IConfiguration _configuration; 
         private readonly ILogger<DockerCodeExecutionService> _logger;
-        private readonly string _apiKey; // Store API key securely
+        private readonly string _apiKey; 
 
         public DockerCodeExecutionService(
             IDockerClient dockerClient,
-            IHttpClientFactory httpClientFactory, // Added
-            IConfiguration configuration, // Added
+            IHttpClientFactory httpClientFactory, 
+            IConfiguration configuration, 
             ILogger<DockerCodeExecutionService> logger)
         {
             _dockerClient = dockerClient;
             _httpClientFactory = httpClientFactory;
             _configuration = configuration;
             _logger = logger;
-            _apiKey = _configuration.GetValue<string>("Authentication:ApiKey") ?? // Get key from config
+            _apiKey = _configuration.GetValue<string>("Authentication:ApiKey") ?? 
                       throw new InvalidOperationException("Runner API Key ('Authentication:RunnerApiKey') not configured in Orchestrator.");
         }
 
@@ -45,7 +45,7 @@ namespace WebCodeWorkExecutor.Services
             var overallResults = new List<TestCaseEvaluationResult>();
             var languageLower = language.ToLowerInvariant();
             var runnerImageName = _configuration.GetValue<string>($"RunnerImages:{languageLower}")
-                                  ?? $"generic-runner-{languageLower}:latest"; // Default naming convention
+                                  ?? $"generic-runner-{languageLower}:latest"; 
 
             _logger.LogInformation("Starting batch evaluation for {TestCaseCount} test cases. Language: {Language}, Solution: {CodePath}, Runner Image: {Image}",
                 testCases.Count, language, codeFilePath, runnerImageName);
@@ -59,7 +59,7 @@ namespace WebCodeWorkExecutor.Services
 
             try
             {
-                // 1. Get Free Port on Host for the runner container's API
+                
                 hostPort = GetFreeTcpPort();
                 string internalRunnerPort = "5000";
                 string hostPortStr = hostPort.ToString();
@@ -68,18 +68,18 @@ namespace WebCodeWorkExecutor.Services
                 var runnerBatchRequest = new RunnerBatchExecuteRequestDto
                 {
                     Language = languageLower,
-                    CodeFilePath = codeFilePath, // Path for runner to fetch from Azure/Azurite
+                    CodeFilePath = codeFilePath, 
                     TestCases = testCases.Select(tc => new RunnerTestCaseItemDto
                     {
                         InputFilePath = tc.InputFilePath,
                         ExpectedOutputFilePath = tc.ExpectedOutputFilePath,
                         TimeLimitMs = tc.MaxExecutionTimeMs,
                         MaxRamMB = tc.MaxRamMB,
-                        TestCaseId = tc.TestCaseId // Pass through the identifier
+                        TestCaseId = tc.TestCaseId 
                     }).ToList(),
                 };
 
-                // 2. Prepare Environment Variables for Runner Container
+                
                 var envVars = new List<string> {
                     $"Authentication__ApiKey={_apiKey}",
                     $"Execution__Language={languageLower}",
@@ -88,7 +88,7 @@ namespace WebCodeWorkExecutor.Services
                     $"AzureStorage__ContainerName={_configuration.GetValue<string>("AzureStorage:ContainerName")}"
                 };
 
-                // 3. Create Container Config
+                
                 var portBindings = new Dictionary<string, IList<PortBinding>> {
                     { $"{internalRunnerPort}/tcp", new List<PortBinding> { new PortBinding { HostPort = hostPort.ToString() } } }
                 };
@@ -111,16 +111,16 @@ namespace WebCodeWorkExecutor.Services
                 _logger.LogInformation("Starting batch runner container '{ContainerName}' ({ContainerId})...", containerName, containerId);
                 await _dockerClient.Containers.StartContainerAsync(containerId, null);
 
-                await Task.Delay(TimeSpan.FromSeconds(5)); // Increased delay for potentially larger setup
+                await Task.Delay(TimeSpan.FromSeconds(5)); 
 
-                httpClient = _httpClientFactory.CreateClient("RunnerApiClient"); // Use named client if configured
+                httpClient = _httpClientFactory.CreateClient("RunnerApiClient"); 
                 httpClient.BaseAddress = new Uri($"http://localhost:{hostPort}");
                 httpClient.DefaultRequestHeaders.Add(ApiKeyAuthenticationDefaults.ApiKeyHeaderName, _apiKey);
                 httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 httpClient.Timeout = TimeSpan.FromMinutes(10);
 
                 _logger.LogInformation("Sending batch evaluation request to runner {ContainerId} via port {HostPort}...", containerId, hostPort);
-                // Assume the runner's batch endpoint is "/execute" or "/batch-execute"
+                
                 HttpResponseMessage response = await httpClient.PostAsJsonAsync("/execute", runnerBatchRequest);
 
                 RunnerBatchExecuteResponseDto? batchRunnerResult = null;
@@ -135,13 +135,13 @@ namespace WebCodeWorkExecutor.Services
                     var errorContent = await response.Content.ReadAsStringAsync();
                     _logger.LogError("Runner API batch call failed. Status: {StatusCode}, Reason: {Reason}, Content: {Content}",
                         response.StatusCode, response.ReasonPhrase, errorContent);
-                    // If the whole batch call fails, all test cases are effectively errored
+                    
                     var errorResults = testCases.Select(tc => new TestCaseEvaluationResult(
                         tc.InputFilePath, EvaluationStatus.InternalError, null, null, $"Runner API communication failed: {response.StatusCode}", null, false)).ToList();
                     return new SolutionEvaluationResult(false, "Runner API communication error", errorResults);
                 }
                 
-                // 6. Map Runner's Batch Result to Orchestrator's SolutionEvaluationResult
+                
                 if (batchRunnerResult == null)
                 {
                      var errorResults = testCases.Select(tc => new TestCaseEvaluationResult(
@@ -152,16 +152,16 @@ namespace WebCodeWorkExecutor.Services
                 var finalTestCaseResults = new List<TestCaseEvaluationResult>();
                 if (batchRunnerResult.CompilationSuccess)
                 {
-                    // Map individual test case results
+                    
                     foreach (var runnerTcResult in batchRunnerResult.TestCaseResults)
                     {
-                        // Find original TestCaseInfo to get InputFilePath for the result (if TestCaseId was used for correlation)
+                        
                         var originalTc = testCases.FirstOrDefault(tc => tc.TestCaseId == runnerTcResult.TestCaseId) ??
-                                         testCases.FirstOrDefault(tc => tc.InputFilePath.EndsWith(runnerTcResult.TestCaseId ?? Guid.NewGuid().ToString())); // Fallback by trying to match input path part
+                                         testCases.FirstOrDefault(tc => tc.InputFilePath.EndsWith(runnerTcResult.TestCaseId ?? Guid.NewGuid().ToString())); 
 
                         finalTestCaseResults.Add(new TestCaseEvaluationResult(
                             TestCaseInputPath: originalTc?.InputFilePath ?? runnerTcResult.TestCaseId ?? "Unknown",
-                            Status: runnerTcResult.Status, // This is now the final verdict from the runner
+                            Status: runnerTcResult.Status, 
                             Stdout: runnerTcResult.Stdout,
                             Stderr: runnerTcResult.Stderr,
                             Message: runnerTcResult.Message,
@@ -170,14 +170,14 @@ namespace WebCodeWorkExecutor.Services
                         ));
                     }
                 }
-                else // Compilation failed
+                else 
                 {
                     _logger.LogWarning("Compilation failed for batch evaluation. Compiler Output: {CompilerOutput}", batchRunnerResult.CompilerOutput);
-                    // Mark all test cases with compile error
+                    
                     finalTestCaseResults.AddRange(testCases.Select(tc => new TestCaseEvaluationResult(
                         tc.InputFilePath,
                         EvaluationStatus.CompileError,
-                        null, null, // No stdout/stderr from execution
+                        null, null, 
                         "Compilation failed (see compiler output).",
                         null, false
                     )));
@@ -199,7 +199,7 @@ namespace WebCodeWorkExecutor.Services
             }
             finally
             {
-                // Stop and (Auto)Remove Container
+                
                 if (!string.IsNullOrEmpty(containerId))
                 {
                     _logger.LogDebug("Stopping batch runner container {ContainerId}...", containerId);
@@ -224,10 +224,10 @@ namespace WebCodeWorkExecutor.Services
 
         private int GetFreeTcpPort()
         {
-            // Creates a listener on port 0, which asks the OS for a free ephemeral port.
-            // Note: There's a small race condition window where the port could be grabbed
-            // by another process between stopping the listener and Docker using the port.
-            // Usually acceptable for this use case, but not guaranteed unique under high load.
+            
+            
+            
+            
              var listener = new TcpListener(IPAddress.Loopback, 0);
              listener.Start();
              int port = ((IPEndPoint)listener.LocalEndpoint).Port;
@@ -236,7 +236,7 @@ namespace WebCodeWorkExecutor.Services
              return port;
         }
 
-        // Optional: Helper to ensure image exists locally
+        
         private async Task EnsureImageExistsAsync(string imageNameWithTag)
         {
             if (string.IsNullOrWhiteSpace(imageNameWithTag))
@@ -248,29 +248,29 @@ namespace WebCodeWorkExecutor.Services
             {
                 _logger.LogDebug("Checking if image {Image} exists locally...", imageNameWithTag);
 
-                // --- Corrected Filtering ---
+                
                 var imageListParameters = new ImagesListParameters
                 {
-                    // Use the Filters property to match the reference (name:tag)
+                    
                     Filters = new Dictionary<string, IDictionary<string, bool>>
                     {
-                        ["reference"] = new Dictionary<string, bool> // Key is "reference"
+                        ["reference"] = new Dictionary<string, bool> 
                         {
-                            [imageNameWithTag] = true // Value is dictionary with image name:tag as key
+                            [imageNameWithTag] = true 
                         }
                     },
-                    All = true // Check all images (not just top-level) if needed, usually reference filter is enough
+                    All = true 
                 };
 
                 var imageList = await _dockerClient.Images.ListImagesAsync(imageListParameters);
-                // --- End Correction ---
+                
 
-                if (!imageList.Any()) // Check if the filtered list is empty
+                if (!imageList.Any()) 
                 {
                     _logger.LogInformation("Image {Image} not found locally. Pulling...", imageNameWithTag);
-                    // Extract image name and tag for pull parameters
+                    
                     string imageName = imageNameWithTag;
-                    string tag = "latest"; // Default tag
+                    string tag = "latest"; 
                     if (imageNameWithTag.Contains(':'))
                     {
                         var parts = imageNameWithTag.Split(':');
@@ -279,18 +279,18 @@ namespace WebCodeWorkExecutor.Services
                     }
                     else
                     {
-                        // If no tag provided, Docker CLI defaults to 'latest', mimic that
+                        
                          _logger.LogDebug("No tag specified for {Image}, assuming 'latest'.", imageName);
                     }
 
                     await _dockerClient.Images.CreateImageAsync(
                         new ImagesCreateParameters { FromImage = imageName, Tag = tag },
-                        null, // No auth needed for public images usually
+                        null, 
                         new Progress<JSONMessage>(m => {
-                             // Avoid logging every single progress message unless needed, maybe log phases
+                             
                              if (m.Status != null && (m.Status.Contains("Pulling fs layer") || m.Status.Contains("Downloading") || m.Status.Contains("Extracting"))) {
-                                  // More detailed logs if desired during pull
-                                  // _logger.LogTrace("Pull progress for {Image}: {Status} {ProgressDetail}", imageNameWithTag, m.Status, m.Progress?.Current);
+                                  
+                                  
                              } else if (m.Status != null) {
                                  _logger.LogDebug("Pull status for {Image}: {Status}", imageNameWithTag, m.Status);
                              }
@@ -306,8 +306,8 @@ namespace WebCodeWorkExecutor.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to ensure Docker image {Image} exists.", imageNameWithTag);
-                // Decide if this is critical - maybe runner can't proceed?
-                throw; // Re-throw as this might prevent execution
+                
+                throw; 
             }
         }
     }
