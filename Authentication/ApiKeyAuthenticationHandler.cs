@@ -27,7 +27,6 @@ namespace WebCodeWorkExecutor.Authentication
 
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
-            
             if (!Request.Headers.TryGetValue(ApiKeyAuthenticationDefaults.ApiKeyHeaderName, out var apiKeyHeaderValues))
             {
                 _logger.LogDebug("'{HeaderName}' header not found.", ApiKeyAuthenticationDefaults.ApiKeyHeaderName);
@@ -40,7 +39,6 @@ namespace WebCodeWorkExecutor.Authentication
                  _logger.LogWarning("'{HeaderName}' header found but value is missing.", ApiKeyAuthenticationDefaults.ApiKeyHeaderName);
                 return Task.FromResult(AuthenticateResult.Fail($"Header '{ApiKeyAuthenticationDefaults.ApiKeyHeaderName}' is missing or empty."));
             }
-
             
             var expectedApiKey = _configuration.GetValue<string>("Authentication:ApiKey");
 
@@ -50,22 +48,17 @@ namespace WebCodeWorkExecutor.Authentication
                 _logger.LogCritical("API Key ('Authentication:ApiKey') not configured on the server.");
                 return Task.FromResult(AuthenticateResult.Fail("Server configuration error: API Key is missing."));
             }
-
             
             if (!string.Equals(providedApiKey, expectedApiKey, StringComparison.Ordinal)) 
             {
                  _logger.LogWarning("Invalid API Key provided.");
                  return Task.FromResult(AuthenticateResult.Fail("Invalid API Key provided."));
             }
-
             
             _logger.LogDebug("API Key validated successfully.");
             var claims = new[] {
-                
                  new Claim(ClaimTypes.NameIdentifier, "BackendService"), 
                  new Claim(ClaimTypes.Name, "BackendService")
-                 
-                 
              };
             var identity = new ClaimsIdentity(claims, Scheme.Name); 
             var principal = new ClaimsPrincipal(identity);
@@ -73,9 +66,5 @@ namespace WebCodeWorkExecutor.Authentication
 
             return Task.FromResult(AuthenticateResult.Success(ticket));
         }
-
-        
-        
-        
     }
 }

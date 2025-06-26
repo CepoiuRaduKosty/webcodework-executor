@@ -14,7 +14,6 @@ using WebCodeWorkExecutor.Authentication;
 
 namespace WebCodeWorkExecutor.Services
 {
-    
     public class DockerCodeExecutionService : ICodeExecutionService
     {
         private readonly IDockerClient _dockerClient;
@@ -59,7 +58,6 @@ namespace WebCodeWorkExecutor.Services
 
             try
             {
-                
                 hostPort = GetFreeTcpPort();
                 string internalRunnerPort = "5000";
                 string hostPortStr = hostPort.ToString();
@@ -78,7 +76,6 @@ namespace WebCodeWorkExecutor.Services
                         TestCaseId = tc.TestCaseId 
                     }).ToList(),
                 };
-
                 
                 var envVars = new List<string> {
                     $"Authentication__ApiKey={_apiKey}",
@@ -87,7 +84,6 @@ namespace WebCodeWorkExecutor.Services
                     $"AzureStorage__ConnectionString={_configuration.GetValue<string>("AzureStorage:ConnectionString")}",
                     $"AzureStorage__ContainerName={_configuration.GetValue<string>("AzureStorage:ContainerName")}"
                 };
-
                 
                 var portBindings = new Dictionary<string, IList<PortBinding>> {
                     { $"{internalRunnerPort}/tcp", new List<PortBinding> { new PortBinding { HostPort = hostPort.ToString() } } }
@@ -224,10 +220,6 @@ namespace WebCodeWorkExecutor.Services
 
         private int GetFreeTcpPort()
         {
-            
-            
-            
-            
              var listener = new TcpListener(IPAddress.Loopback, 0);
              listener.Start();
              int port = ((IPEndPoint)listener.LocalEndpoint).Port;
@@ -247,7 +239,6 @@ namespace WebCodeWorkExecutor.Services
             try
             {
                 _logger.LogDebug("Checking if image {Image} exists locally...", imageNameWithTag);
-
                 
                 var imageListParameters = new ImagesListParameters
                 {
@@ -286,15 +277,7 @@ namespace WebCodeWorkExecutor.Services
                     await _dockerClient.Images.CreateImageAsync(
                         new ImagesCreateParameters { FromImage = imageName, Tag = tag },
                         null, 
-                        new Progress<JSONMessage>(m => {
-                             
-                             if (m.Status != null && (m.Status.Contains("Pulling fs layer") || m.Status.Contains("Downloading") || m.Status.Contains("Extracting"))) {
-                                  
-                                  
-                             } else if (m.Status != null) {
-                                 _logger.LogDebug("Pull status for {Image}: {Status}", imageNameWithTag, m.Status);
-                             }
-                        })
+                        new Progress<JSONMessage>(m => {})
                      );
                      _logger.LogInformation("Image {Image} pulled successfully.", imageNameWithTag);
                 }
