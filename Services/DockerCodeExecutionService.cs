@@ -122,7 +122,7 @@ namespace WebCodeWorkExecutor.Services
             var hostConfig = new HostConfig
             {
                 PortBindings = portBindings,
-                AutoRemove = false,
+                AutoRemove = true,
                 NetworkMode = "bridge",
                 Memory = _configuration.GetValue<int>("GlobalLimits:MaxMemoryMb") * 1024 * 1024,
                 CPUPeriod = 100000,
