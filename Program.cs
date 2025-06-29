@@ -1,73 +1,48 @@
-using Docker.DotNet;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.OpenApi.Models;
-using WebCodeWorkExecutor.Authentication;
+using System.Net.Http.Headers;
+using WebCodeWorkExecutor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddProblemDetails();
 builder.Services.AddDockerClient(builder.Configuration);
-builder.Services.AddAuthentication(ApiKeyAuthenticationDefaults.AuthenticationScheme)
-    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
-        ApiKeyAuthenticationDefaults.AuthenticationScheme,
-        options => { /* No custom options needed for this basic handler */ });
-builder.Services.AddAuthorization(options =>
+builder.Services.AddAuthentication(options =>
 {
-    options.AddPolicy("ApiKeyPolicy", policy =>
-    {
-        policy.AddAuthenticationSchemes(ApiKeyAuthenticationDefaults.AuthenticationScheme);
-        policy.RequireAuthenticatedUser();
-    });
+    options.DefaultAuthenticateScheme = "BackendApiKey";
+    options.DefaultChallengeScheme = "BackendApiKey";
+    options.DefaultScheme = "BackendApiKey";
+})
+.AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>("BackendApiKey", options =>
+{
+    options.ApiKeyHeaderName = builder.Configuration.GetValue<string>("Backend:ApiHeaderName")!;
+    options.ValidApiKey = builder.Configuration.GetValue<string>("Backend:ApiKey")!;
+})
+.AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>("ContainersApiKey", options =>
+{
+    options.ApiKeyHeaderName = builder.Configuration.GetValue<string>("Containers:ApiHeaderName")!;
+    options.ValidApiKey = builder.Configuration.GetValue<string>("Containers:ApiKey")!;
 });
 
-builder.Services.AddScoped<WebCodeWorkExecutor.Services.ICodeExecutionService, WebCodeWorkExecutor.Services.DockerCodeExecutionService>();
+builder.Services.AddScoped<ICodeExecutionService, DockerCodeExecutionService>();
 builder.Services.AddProblemDetails();
 builder.Services.AddControllers(); 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddHttpClient();
-builder.Services.AddSwaggerGen(options =>
+builder.Services.AddHttpClient("BackendClient", client =>
 {
-    options.SwaggerDoc("v1", new OpenApiInfo { });
-
-    options.AddSecurityDefinition(ApiKeyAuthenticationDefaults.AuthenticationScheme, new OpenApiSecurityScheme
-    {
-        Description = "API Key authentication header.",
-        Name = ApiKeyAuthenticationDefaults.ApiKeyHeaderName,
-        In = ParameterLocation.Header, 
-        Type = SecuritySchemeType.ApiKey, 
-        Scheme = "ApiKey" 
-    });
-
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = ApiKeyAuthenticationDefaults.AuthenticationScheme 
-                },
-                Scheme = "ApiKey",
-                Name = ApiKeyAuthenticationDefaults.ApiKeyHeaderName,
-                In = ParameterLocation.Header,
-            },
-            new List<string>() 
-        }
-    });
+    client.BaseAddress = new Uri($"{builder.Configuration.GetValue<string>("Backend:Address")!}");
+    client.DefaultRequestHeaders.Add(builder.Configuration.GetValue<string>("Backend:ApiHeaderName")!, builder.Configuration.GetValue<string>("Backend:ApiKey"));
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 });
+builder.Services.AddHttpClient("ContainersClient", client =>
+{
+    client.BaseAddress = new Uri($"{builder.Configuration.GetValue<string>("Containers:Address")!}");
+    client.DefaultRequestHeaders.Add(builder.Configuration.GetValue<string>("Containers:ApiHeaderName")!, builder.Configuration.GetValue<string>("Containers:ApiKey"));
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+});
+builder.Services.AddScoped<IBackendService, BackendService>();
+builder.Services.AddScoped<IEvaluationContainerService, EvaluationContainerService>();
+builder.Services.AddSingleton<ContainerJobsTrackerService>();
 
 var app = builder.Build();
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(options =>
-    {
-        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Code Runner API v1");
-    });
-}
-
 app.UseExceptionHandler();
 app.UseAuthentication(); 
 app.UseAuthorization(); 

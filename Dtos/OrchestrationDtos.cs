@@ -40,6 +40,9 @@ namespace WebCodeWorkExecutor.Dtos
         public string CodeFilePath { get; set; } = string.Empty; 
 
         [Required]
+        public int SubmissionId { get; set; }
+
+        [Required]
         [MinLength(1, ErrorMessage = "At least one test case must be provided.")]
         public List<TestCasePathInfo> TestCases { get; set; } = new List<TestCasePathInfo>();
     }
@@ -67,6 +70,7 @@ namespace WebCodeWorkExecutor.Dtos
         public string OverallStatus { get; set; } = "Error";
         public bool CompilationSuccess { get; set; }
         public string? CompilerOutput { get; set; }
+        required public string Language { get; set; }
         public List<OrchestrationTestCaseResult> Results { get; set; } = new List<OrchestrationTestCaseResult>();
     }
 }

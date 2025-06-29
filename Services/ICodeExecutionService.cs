@@ -8,10 +8,14 @@ namespace WebCodeWorkExecutor.Services
 
     public interface ICodeExecutionService
     {
-        Task<SolutionEvaluationResult> EvaluateSolutionAsync(
+        Task<string?> StartCodeEvalAsync(
             string language,
             string codeFilePath,
-            List<TestCaseInfo> testCases 
+            int submissionId,
+            List<TestCaseInfo> testCases,
+            Action<Exception> onException
         );
+
+        Task ForceStopEvaluation(string id);
     }
 }

@@ -43,11 +43,12 @@ namespace WebCodeWorkExecutor.Services
         public string Language { get; set; } = string.Empty;
         public string? Version { get; set; }
         public string CodeFilePath { get; set; } = string.Empty; 
+        public required int SubmissionId { get; set; }
         public List<RunnerTestCaseItemDto> TestCases { get; set; } = new List<RunnerTestCaseItemDto>();
         
     }
 
-    internal record RunnerTestCaseResultDto
+    public record RunnerTestCaseResultDto
     {
         public string? TestCaseId { get; set; } 
         public string Status { get; set; } = "INTERNAL_ERROR"; 
@@ -58,10 +59,11 @@ namespace WebCodeWorkExecutor.Services
         public bool MaximumMemoryException { get; set; }
     }
 
-    internal record RunnerBatchExecuteResponseDto
+    public record RunnerBatchExecuteResponseDto
     {
         public bool CompilationSuccess { get; set; }
         public string? CompilerOutput { get; set; }
+        public int SubmissionId { get; set; }
         public List<RunnerTestCaseResultDto> TestCaseResults { get; set; } = new List<RunnerTestCaseResultDto>();
     }
 
