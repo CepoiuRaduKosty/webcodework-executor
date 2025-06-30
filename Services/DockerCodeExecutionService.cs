@@ -114,7 +114,7 @@ namespace WebCodeWorkExecutor.Services
             };
             var tmpfsMounts = new Dictionary<string, string>
             {
-                { "/sandbox", $"size={_configuration.GetValue<long>("GlobalLimits:MaxStorageWorkdirMb") * 1024 * 1024},mode=1777" }
+                { "/sandbox", $"size={_configuration.GetValue<long>("GlobalLimits:MaxStorageWorkdirMb") * 1024 * 1024},mode=1777,exec" }
             };
             var portBindings = new Dictionary<string, IList<PortBinding>> {
                 { $"{internalRunnerPort}/tcp", new List<PortBinding> { new PortBinding { HostPort = hostPort.ToString() } } }
